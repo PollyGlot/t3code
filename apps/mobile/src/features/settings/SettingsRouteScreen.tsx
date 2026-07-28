@@ -1,4 +1,5 @@
 import { useAuth, useUser } from "@clerk/expo";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import * as Updates from "expo-updates";
@@ -6,11 +7,21 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { SymbolView } from "../../components/AppSymbol";
 import * as Effect from "effect/Effect";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Alert, Linking, Platform, ScrollView, View } from "react-native";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  type AtomCommandResult,
   isAtomCommandInterrupted,
   reportAtomCommandResult,
   settleAsyncResult,
@@ -19,6 +30,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
+import { supportsAgentAwarenessPush } from "../agent-awareness/capabilities";
 import { setLiveActivityUpdatesEnabled } from "../agent-awareness/liveActivityPreferences";
 import { requestAgentNotificationPermission } from "../agent-awareness/notificationPermissions";
 import {
@@ -32,8 +44,9 @@ import { hasCloudPublicConfig, resolveRelayClerkTokenOptions } from "../cloud/pu
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { WorkspaceSidebarToolbar } from "../layout/workspace-sidebar-toolbar";
 import { runtime } from "../../lib/runtime";
-import { loadPreferences } from "../../lib/storage";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { useThreadListV2Enabled } from "../threads/use-thread-list-v2-enabled";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
@@ -101,12 +114,10 @@ function LocalSettingsRouteScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
-        style={{ flex: 1 }}
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{
-          gap: 24,
           paddingBottom: Math.max(insets.bottom, 18) + 18,
-          paddingHorizontal: 20,
-          paddingTop: 16,
         }}
       >
         <SettingsSection title="Configuration">
@@ -118,9 +129,13 @@ function LocalSettingsRouteScreen() {
           />
         </SettingsSection>
 
+        <GeneralSettingsSection />
+
         <SettingsSection title="Appearance">
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
+
+        <BetaSettingsSection />
 
         <ArchivedThreadsSettingsSection />
 
@@ -131,6 +146,9 @@ function LocalSettingsRouteScreen() {
 }
 
 function ConfiguredSettingsRouteScreen() {
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const agentAwarenessPushAvailable = supportsAgentAwarenessPush();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { expand: expandClerkSheet } = useClerkSettingsSheetDetent();
@@ -140,6 +158,9 @@ function ConfiguredSettingsRouteScreen() {
   const [notificationStatus, setNotificationStatus] = useState<NotificationStatus>("checking");
   const [liveActivityStatus, setLiveActivityStatus] = useState<LiveActivityStatus>("checking");
   const deviceRegistered = useDeviceRegistered();
+  const liveActivitiesPreferenceEnabled = AsyncResult.isSuccess(preferencesResult)
+    ? preferencesResult.value.liveActivitiesEnabled !== false
+    : true;
 
   const connections = useMemo(() => Object.values(savedConnectionsById), [savedConnectionsById]);
   const environmentCount = connections.length;
@@ -176,16 +197,19 @@ function ConfiguredSettingsRouteScreen() {
       setLiveActivityStatus("signed-out");
       return;
     }
-    void (async () => {
-      const result = await settlePromise(() => loadPreferences());
-      if (result._tag === "Failure") {
-        reportAtomCommandResult(result, { label: "live activity preference load" });
+    if (!AsyncResult.isSuccess(preferencesResult)) {
+      if (AsyncResult.isFailure(preferencesResult)) {
+        reportAtomCommandResult(preferencesResult, { label: "live activity preference load" });
         setLiveActivityStatus("enabled");
-        return;
+      } else {
+        setLiveActivityStatus("checking");
       }
-      setLiveActivityStatus(result.value.liveActivitiesEnabled === false ? "disabled" : "enabled");
-    })();
-  }, [isLoaded, isSignedIn]);
+      return;
+    }
+    setLiveActivityStatus(
+      preferencesResult.value.liveActivitiesEnabled === false ? "disabled" : "enabled",
+    );
+  }, [isLoaded, isSignedIn, preferencesResult]);
 
   const requestNotifications = useCallback(async () => {
     const result = await settleAsyncResult(() =>
@@ -288,6 +312,7 @@ function ConfiguredSettingsRouteScreen() {
       runtime.runPromiseExit(
         setLiveActivityUpdatesEnabled({
           enabled: true,
+          previousEnabled: liveActivitiesPreferenceEnabled,
           clerkToken: tokenResult.value,
           connections,
         }),
@@ -305,6 +330,7 @@ function ConfiguredSettingsRouteScreen() {
       return;
     }
 
+    savePreferences({ liveActivitiesEnabled: true });
     refreshManagedRelayEnvironments();
     setLiveActivityStatus("enabled");
     // The environment link can succeed while this device's own registration
@@ -323,7 +349,15 @@ function ConfiguredSettingsRouteScreen() {
         "This device could not be registered with T3 Connect, so Live Activities won't appear yet. They'll start once registration succeeds.",
       );
     }
-  }, [connections, environmentCount, getToken, isSignedIn, promptSignIn]);
+  }, [
+    connections,
+    environmentCount,
+    getToken,
+    isSignedIn,
+    liveActivitiesPreferenceEnabled,
+    promptSignIn,
+    savePreferences,
+  ]);
 
   const handleDeviceNotificationsChange = useCallback(
     (enabled: boolean) => {
@@ -367,17 +401,20 @@ function ConfiguredSettingsRouteScreen() {
             runtime.runPromiseExit(
               setLiveActivityUpdatesEnabled({
                 enabled: false,
+                previousEnabled: liveActivitiesPreferenceEnabled,
                 clerkToken: token,
                 connections,
               }),
             ),
           );
           if (updateResult._tag === "Failure") {
+            setLiveActivityStatus("enabled");
             reportAtomCommandResult(updateResult, {
               label: "live activity disable",
             });
             return;
           }
+          savePreferences({ liveActivitiesEnabled: false });
           refreshManagedRelayEnvironments();
         })();
         return;
@@ -390,7 +427,15 @@ function ConfiguredSettingsRouteScreen() {
 
       void linkEnvironments();
     },
-    [connections, getToken, isSignedIn, linkEnvironments, promptSignIn],
+    [
+      connections,
+      getToken,
+      isSignedIn,
+      linkEnvironments,
+      liveActivitiesPreferenceEnabled,
+      promptSignIn,
+      savePreferences,
+    ],
   );
 
   const openAccount = useCallback(() => {
@@ -408,12 +453,10 @@ function ConfiguredSettingsRouteScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
-        style={{ flex: 1 }}
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{
-          gap: 24,
           paddingBottom: Math.max(insets.bottom, 18) + 18,
-          paddingHorizontal: 20,
-          paddingTop: 16,
         }}
       >
         <View className="gap-3">
@@ -440,22 +483,32 @@ function ConfiguredSettingsRouteScreen() {
           <SettingsSwitchRow
             icon="bell.badge"
             label="Device Notifications"
-            disabled={notificationStatus === "checking" || notificationStatus === "unsupported"}
+            disabled={
+              !agentAwarenessPushAvailable ||
+              notificationStatus === "checking" ||
+              notificationStatus === "unsupported"
+            }
             // Only reads as on when this device is actually registered with the
             // relay; otherwise notifications cannot be delivered regardless of
             // the local iOS permission.
-            value={notificationStatus === "enabled" && deviceRegistered}
+            value={
+              agentAwarenessPushAvailable && notificationStatus === "enabled" && deviceRegistered
+            }
             onValueChange={handleDeviceNotificationsChange}
           />
           <SettingsSwitchRow
             disabled={
-              !isLoaded || liveActivityStatus === "checking" || liveActivityStatus === "linking"
+              !agentAwarenessPushAvailable ||
+              !isLoaded ||
+              liveActivityStatus === "checking" ||
+              liveActivityStatus === "linking"
             }
             icon="bolt.circle"
             label="Live Activity Updates"
             // Same gate: a saved preference is meaningless until the device
             // registration the relay needs to push updates has succeeded.
             value={
+              agentAwarenessPushAvailable &&
               (liveActivityStatus === "enabled" || liveActivityStatus === "linking") &&
               deviceRegistered
             }
@@ -463,9 +516,13 @@ function ConfiguredSettingsRouteScreen() {
           />
         </SettingsSection>
 
+        <GeneralSettingsSection />
+
         <SettingsSection title="Appearance">
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
+
+        <BetaSettingsSection />
 
         <ArchivedThreadsSettingsSection />
 
@@ -475,8 +532,57 @@ function ConfiguredSettingsRouteScreen() {
   );
 }
 
+function GeneralSettingsSection() {
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const projectGroupingEnabled = AsyncResult.isSuccess(preferencesResult)
+    ? preferencesResult.value.projectGroupingEnabled !== false
+    : true;
+
+  return (
+    <SettingsSection title="General">
+      <SettingsSwitchRow
+        icon="folder"
+        label="Project Grouping"
+        value={projectGroupingEnabled}
+        onValueChange={(value) => savePreferences({ projectGroupingEnabled: value })}
+      />
+    </SettingsSection>
+  );
+}
+
+/**
+ * Device-local beta toggles. Mobile has no client-settings sync, so this is
+ * the counterpart of web's Settings → Beta backed by mobile preferences.
+ */
+function BetaSettingsSection() {
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const threadListV2Enabled = useThreadListV2Enabled();
+
+  return (
+    <View className="gap-3">
+      <SettingsSection title="Beta">
+        <SettingsSwitchRow
+          icon="sidebar.left"
+          label="Thread List v2"
+          value={threadListV2Enabled}
+          onValueChange={(value) => savePreferences({ threadListV2Enabled: value })}
+        />
+      </SettingsSection>
+      <Text className="px-2 text-sm text-foreground-muted">
+        One flat thread list in creation order. Active work renders as cards; settled threads
+        collapse to compact rows. Switch back any time.
+      </Text>
+    </View>
+  );
+}
+
+type UpdateCheckState = "idle" | "checking" | "downloading" | "restarting" | "current";
+
 function AppSettingsSection() {
   const icon = useThemeColor("--color-icon");
+  const [updateState, setUpdateState] = useState<UpdateCheckState>("idle");
+  const updateInFlight = useRef(false);
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
   // Fall back to "production" to match resolveAppVariant in app.config.ts, so a
@@ -495,26 +601,138 @@ function AppSettingsSection() {
         : null
     : null;
 
+  const busy =
+    updateState === "checking" || updateState === "downloading" || updateState === "restarting";
+
+  // "Up to date" is a transient acknowledgement, not a state worth persisting —
+  // drop back to the bundle label so the row keeps answering "what am I running?".
+  useEffect(() => {
+    if (updateState !== "current") return;
+    const timer = setTimeout(() => setUpdateState("idle"), 3000);
+    return () => clearTimeout(timer);
+  }, [updateState]);
+
+  const checkForUpdate = useCallback(async () => {
+    // `disabled={busy}` only takes effect on the next render, so two taps in the
+    // same frame would both get through. The ref closes that window.
+    if (updateInFlight.current) return;
+    updateInFlight.current = true;
+    try {
+      await runUpdateCheck(setUpdateState);
+    } finally {
+      updateInFlight.current = false;
+    }
+  }, []);
+
+  const statusLabel =
+    updateState === "checking"
+      ? "Checking…"
+      : updateState === "downloading"
+        ? "Downloading…"
+        : updateState === "restarting"
+          ? "Restarting…"
+          : updateState === "current"
+            ? "Up to date"
+            : bundleLabel;
+
+  const versionRow = (
+    <View className="flex-row items-center gap-4 p-4">
+      <SymbolView
+        name="info.circle"
+        size={22}
+        tintColor={icon}
+        type="monochrome"
+        weight="regular"
+      />
+      <Text className="flex-1 text-lg text-foreground">Version</Text>
+      <View className="items-end">
+        <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
+        {statusLabel ? (
+          <Text className="text-xs text-foreground-muted/70">{statusLabel}</Text>
+        ) : null}
+      </View>
+      {Updates.isEnabled ? (
+        <View className="w-[22px] items-center">
+          {busy ? (
+            <ActivityIndicator color={icon} size="small" />
+          ) : (
+            <SymbolView
+              name="arrow.clockwise"
+              size={18}
+              tintColor={icon}
+              type="monochrome"
+              weight="semibold"
+            />
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <SettingsSection title="App">
-      <View className="flex-row items-center gap-4 p-4">
-        <SymbolView
-          name="info.circle"
-          size={22}
-          tintColor={icon}
-          type="monochrome"
-          weight="regular"
-        />
-        <Text className="flex-1 text-lg text-foreground">Version</Text>
-        <View className="items-end">
-          <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
-          {bundleLabel ? (
-            <Text className="text-xs text-foreground-muted/70">{bundleLabel}</Text>
-          ) : null}
-        </View>
-      </View>
+      <SettingsRow icon="internaldrive" label="Client Storage" target="SettingsClientStorage" />
+      <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
+      {Updates.isEnabled ? (
+        <Pressable
+          accessibilityLabel="Check for updates"
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={() => void checkForUpdate()}
+        >
+          {versionRow}
+        </Pressable>
+      ) : (
+        versionRow
+      )}
     </SettingsSection>
   );
+}
+
+async function runUpdateCheck(setUpdateState: (state: UpdateCheckState) => void): Promise<void> {
+  setUpdateState("checking");
+  const check = await settlePromise(() => Updates.checkForUpdateAsync());
+  if (check._tag === "Failure") {
+    reportUpdateFailure(check, "Could not check for updates.");
+    setUpdateState("idle");
+    return;
+  }
+  // A rollback directive (`eas update:rollback`) arrives as isAvailable: false
+  // with isRollBackToEmbedded: true — there is nothing newer to install, but the
+  // running OTA still has to be dropped for the embedded bundle.
+  if (!check.value.isAvailable && !check.value.isRollBackToEmbedded) {
+    setUpdateState("current");
+    return;
+  }
+
+  setUpdateState("downloading");
+  const fetched = await settlePromise(() => Updates.fetchUpdateAsync());
+  if (fetched._tag === "Failure") {
+    reportUpdateFailure(fetched, "Could not download the update.");
+    setUpdateState("idle");
+    return;
+  }
+  // isNew is always false for a rollback, so it can't be the sole gate here either.
+  if (!fetched.value.isNew && !fetched.value.isRollBackToEmbedded) {
+    setUpdateState("current");
+    return;
+  }
+
+  setUpdateState("restarting");
+  // reloadAsync never resolves on success — the JS context is torn down — so
+  // reaching the failure branch below is the only way this returns.
+  const reloaded = await settlePromise(() => Updates.reloadAsync());
+  if (reloaded._tag === "Failure") {
+    reportUpdateFailure(reloaded, "Downloaded, but could not restart the app.");
+    setUpdateState("idle");
+  }
+}
+
+function reportUpdateFailure(result: AtomCommandResult<unknown, unknown>, fallback: string): void {
+  reportAtomCommandResult(result, { label: "app update check" });
+  if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+  const error = squashAtomCommandFailure(result);
+  Alert.alert("Update failed", error instanceof Error ? error.message : fallback);
 }
 
 function capitalize(value: string): string {
