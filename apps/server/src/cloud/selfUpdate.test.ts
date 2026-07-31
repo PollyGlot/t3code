@@ -545,7 +545,7 @@ it.layer(NodeServices.layer)("ServerSelfUpdate.update", (it) => {
       yield* TestClock.adjust(Duration.seconds(10));
       assert.deepEqual(context.commands[3], {
         command: "systemctl",
-        args: ["--user", "restart", "t3code.service"],
+        args: ["--user", "restart", "--no-block", "t3code.service"],
       });
       assert.lengthOf(context.spawns, 0);
       // systemd replaces the process; the server must not exit itself.
@@ -583,7 +583,7 @@ it.layer(NodeServices.layer)("ServerSelfUpdate.update", (it) => {
       assert.deepEqual(
         context.commands.slice(-2).map((entry) => entry.args),
         [
-          ["--user", "restart", BOOT_SERVICE_UNIT_FILE],
+          ["--user", "restart", "--no-block", BOOT_SERVICE_UNIT_FILE],
           ["--user", "daemon-reload"],
         ],
       );

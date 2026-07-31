@@ -354,14 +354,19 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* (option
           targetVersion,
         });
         // Restart after the acknowledgement has had time to cross any relay
-        // hop. If systemd rejects the handoff, restore the previous unit while
-        // this process is still alive and log the failure for diagnostics.
+        // hop. --no-block queues the restart job and exits before systemd
+        // stops this unit: a blocking restart's SIGTERM reaches the systemctl
+        // child (it shares this service's cgroup), which read as a restart
+        // failure and rolled the new unit back while the old server finished
+        // shutting down. With the handoff race gone, a non-zero exit or spawn
+        // error means systemd genuinely rejected the job while this process is
+        // still alive, so restoring the previous unit below stays correct.
         yield* scheduleRestart(
           Effect.gen(function* () {
             const restart = yield* runner
               .run({
                 command: "systemctl",
-                args: ["--user", "restart", BOOT_SERVICE_UNIT_FILE],
+                args: ["--user", "restart", "--no-block", BOOT_SERVICE_UNIT_FILE],
               })
               .pipe(
                 Effect.mapError((cause) =>
