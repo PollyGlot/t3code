@@ -980,9 +980,16 @@ async function captureIos(
       showcaseCaptureDirectory(outputDirectory, capture),
       `${scene}.png`,
     );
-    // With windowing disabled and the app rotated in place, the framebuffer
-    // is already landscape-oriented; no post-rotation is needed.
     await runCommand("xcrun", ["simctl", "io", simulator.udid, "screenshot", destination]);
+    if (capture.device.orientation === "landscape") {
+      // A headless simulator keeps its display portrait while the rotated app
+      // renders sideways inside it; with Simulator.app attached the display
+      // itself rotates. Only post-rotate the former.
+      const { width, height } = readPngDimensions(await NodeFSP.readFile(destination));
+      if (height > width) {
+        await runCommand("sips", ["--rotate", "270", destination]);
+      }
+    }
     await finalizeCapture(destination, capture.device);
   }
 }
