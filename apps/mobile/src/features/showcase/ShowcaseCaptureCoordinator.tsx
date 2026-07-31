@@ -9,6 +9,8 @@ import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { holdEditingQueuedMessage } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
 import {
+  applyNativeShowcaseOrientation,
+  getNativeShowcaseOrientation,
   getNativeShowcasePairingUrls,
   getNativeShowcaseScene,
   markNativeShowcaseReady,
@@ -59,6 +61,20 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
     const interval = setInterval(readPairingUrls, 250);
     return () => clearInterval(interval);
   }, [pairingUrls.length]);
+
+  useEffect(() => {
+    if (!SHOWCASE_ENABLED) return;
+    const orientation = getNativeShowcaseOrientation();
+    if (orientation === null) return;
+
+    let cancelled = false;
+    void retryShowcaseOperation(async () => applyNativeShowcaseOrientation(orientation), {
+      isCancelled: () => cancelled,
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!SHOWCASE_ENABLED) return;
