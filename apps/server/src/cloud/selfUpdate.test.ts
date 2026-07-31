@@ -550,6 +550,14 @@ it.layer(NodeServices.layer)("ServerSelfUpdate.update", (it) => {
       assert.lengthOf(context.spawns, 0);
       // systemd replaces the process; the server must not exit itself.
       assert.equal(context.exitCount(), 0);
+
+      // The queued restart returns while this process is still shutting
+      // down; the lock must stay held so a second update cannot rewrite the
+      // unit mid-teardown.
+      const concurrentError = yield* context.service
+        .update({ targetVersion: "0.0.30" })
+        .pipe(Effect.flip);
+      assert.include(concurrentError.reason, "already in progress");
     }).pipe(Effect.provide(TestClock.layer())),
   );
 

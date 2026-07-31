@@ -394,9 +394,13 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* (option
             Effect.catch((error) =>
               Effect.logError("Server self-update could not restart the boot service.").pipe(
                 Effect.annotateLogs({ targetVersion, error: error.reason }),
+                // Permit a retry only after the failed handoff was rolled
+                // back. A queued restart returns while this process is still
+                // shutting down; releasing the lock then would let a second
+                // update rewrite the unit mid-teardown.
+                Effect.andThen(Ref.set(inFlight, false)),
               ),
             ),
-            Effect.ensuring(Ref.set(inFlight, false)),
           ),
         );
       } else {
