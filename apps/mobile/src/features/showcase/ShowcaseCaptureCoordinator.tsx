@@ -49,6 +49,7 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
   const [pendingTasksReady, setPendingTasksReady] = useState(false);
   const [requestedScene, setRequestedScene] = useState<ShowcaseScene | null>(null);
   const [readyScene, setReadyScene] = useState<ShowcaseScene | null>(null);
+  const [orientationSettled, setOrientationSettled] = useState(false);
 
   useEffect(() => {
     if (!SHOWCASE_ENABLED || pairingUrls.length > 0) return;
@@ -63,18 +64,23 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
   }, [pairingUrls.length]);
 
   useEffect(() => {
-    if (!SHOWCASE_ENABLED) return;
+    if (!SHOWCASE_ENABLED || orientationSettled) return;
     const orientation = getNativeShowcaseOrientation();
-    if (orientation === null) return;
+    if (orientation === null) {
+      setOrientationSettled(true);
+      return;
+    }
 
     let cancelled = false;
     void retryShowcaseOperation(async () => applyNativeShowcaseOrientation(orientation), {
       isCancelled: () => cancelled,
+    }).then((applied) => {
+      if (!cancelled && applied) setOrientationSettled(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [orientationSettled]);
 
   useEffect(() => {
     if (!SHOWCASE_ENABLED) return;
@@ -198,7 +204,10 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
       scene === null ||
       requestedScene === null ||
       scene !== requestedScene ||
-      !hasFixture
+      !hasFixture ||
+      // Never report a scene ready while the capture orientation is still
+      // being applied — a screenshot taken early has the wrong dimensions.
+      !orientationSettled
     ) {
       setReadyScene(null);
       return;
@@ -226,7 +235,7 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
       if (renderFrame !== null) cancelAnimationFrame(renderFrame);
       if (readyFrame !== null) cancelAnimationFrame(readyFrame);
     };
-  }, [hasFixture, requestedScene, scene]);
+  }, [hasFixture, orientationSettled, requestedScene, scene]);
 
   if (!SHOWCASE_ENABLED || readyScene === null) return null;
 

@@ -810,27 +810,43 @@ async function ensureIosFullScreenAppsMode(udid: string): Promise<void> {
     "SBChamoisWindowingEnabled",
   ]).catch(() => "");
   if (current.trim() === "0") return;
-  await runCommand("xcrun", [
+  // The Settings toggle writes all three keys; SBChamoisWindowingEnabled
+  // alone is not honored on a freshly created device.
+  for (const key of [
+    "SBChamoisWindowingEnabled",
+    "SBMedusaMultitaskingEnabled",
+    "SBFlexibleWindowingPreviouslyEnabledAutomaticStageCreation",
+  ]) {
+    await runCommand("xcrun", [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      "com.apple.springboard",
+      key,
+      "-bool",
+      "false",
+    ]);
+  }
+  // A SpringBoard restart is not enough on a freshly created simulator (the
+  // first CI run captured with windowing still active), so reboot the device
+  // and verify the mode actually stuck.
+  await runCommand("xcrun", ["simctl", "shutdown", udid]);
+  await runCommand("xcrun", ["simctl", "boot", udid]);
+  await runCommand("xcrun", ["simctl", "bootstatus", udid, "-b"]);
+  const applied = await commandOutput("xcrun", [
     "simctl",
     "spawn",
     udid,
     "defaults",
-    "write",
+    "read",
     "com.apple.springboard",
     "SBChamoisWindowingEnabled",
-    "-bool",
-    "false",
-  ]);
-  await runCommand("xcrun", [
-    "simctl",
-    "spawn",
-    udid,
-    "launchctl",
-    "kickstart",
-    "-k",
-    "user/foreground/com.apple.SpringBoard",
-  ]);
-  await delay(5_000);
+  ]).catch(() => "");
+  if (applied.trim() !== "0") {
+    throw new Error(`Simulator ${udid} did not switch to Full Screen Apps mode.`);
+  }
 }
 
 async function iosAppContainer(udid: string): Promise<string> {

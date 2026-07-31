@@ -61,17 +61,20 @@ public final class T3NativeControlsModule: Module {
 
     // The geometry request above can fail transiently (for example before the
     // scene is foreground-active), so callers poll this until it settles.
+    // Screen bounds — not the scene's interface orientation — decide the
+    // answer because they match the captured framebuffer: with iPadOS
+    // windowing active, a floating landscape window still reports a portrait
+    // screen, and screenshots would come out portrait.
     AsyncFunction("getInterfaceOrientation") { () -> String in
-      guard #available(iOS 16.0, *),
+      guard
         let windowScene = UIApplication.shared.connectedScenes
           .compactMap({ $0 as? UIWindowScene })
           .first
       else {
         return "unknown"
       }
-      return windowScene.effectiveGeometry.interfaceOrientation.isLandscape
-        ? "landscape"
-        : "portrait"
+      let bounds = windowScene.screen.coordinateSpace.bounds
+      return bounds.width > bounds.height ? "landscape" : "portrait"
     }.runOnQueue(.main)
 
     Function("prepareShowcaseCapture") {
