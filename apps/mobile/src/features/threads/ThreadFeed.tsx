@@ -73,7 +73,11 @@ import {
 } from "../review/nativeReviewDiffAdapter";
 import { buildReviewParsedDiff } from "../review/reviewModel";
 import { cn } from "../../lib/cn";
-import { deriveCenteredContentHorizontalPadding, type LayoutVariant } from "../../lib/layout";
+import {
+  deriveCenteredContentHorizontalPadding,
+  deriveThreadFeedInitialContentInset,
+  type LayoutVariant,
+} from "../../lib/layout";
 import {
   resolveMarkdownFontSizes,
   resolveNativeMarkdownTypography,
@@ -1396,6 +1400,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const bottomContentInset = props.contentBottomInset ?? 18;
   const usesNativeAutomaticInsets =
     props.usesAutomaticContentInsets === true && Platform.OS === "ios";
+  const initialContentInset = deriveThreadFeedInitialContentInset({
+    platform: Platform.OS,
+    usesNativeAutomaticInsets,
+    bottomContentInset,
+  });
   // With automatic insets the header inset lives in UIKit's adjustedContentInset,
   // which LegendList's JS anchoring math cannot see — it measures the anchored
   // end space from the scroll view's frame top. Fold the header height back into
@@ -1924,9 +1933,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             // first reported override REPLACES it instead of adding to it.
             // Not on iOS: there the prop would reach UIKit and inset natively
             // on top of the animated padding.
-            {...(Platform.OS === "android" && !usesNativeAutomaticInsets
-              ? { contentInset: { bottom: bottomContentInset } }
-              : {})}
+            {...(initialContentInset ? { contentInset: initialContentInset } : {})}
             // The keyboard integration's offset math (end pinning, max scroll)
             // must add the same UIKit-added extra, or its keyboard-open end
             // targets land one safe-area short of the true resting offset.
