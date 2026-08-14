@@ -139,6 +139,45 @@ export function findFirstUnansweredPendingUserInputQuestionIndex(
   return unansweredIndex === -1 ? Math.max(questions.length - 1, 0) : unansweredIndex;
 }
 
+export function derivePendingUserInputSelectionEcho(
+  question: UserInputQuestion,
+  draft: PendingUserInputDraftAnswer | undefined,
+): string | null {
+  const resolvedAnswer = resolvePendingUserInputAnswer(question, draft);
+  if (!resolvedAnswer) {
+    return null;
+  }
+
+  if (Array.isArray(resolvedAnswer)) {
+    if (resolvedAnswer.length === 0) {
+      return null;
+    }
+    return resolvedAnswer.length > 1
+      ? `${resolvedAnswer.length} selected`
+      : (resolvedAnswer[0] ?? null);
+  }
+
+  return resolvedAnswer;
+}
+
+export function togglePendingUserInputCollapsedRequestId(
+  collapsedRequestIds: ReadonlyArray<string>,
+  requestId: string,
+): string[] {
+  return collapsedRequestIds.includes(requestId)
+    ? collapsedRequestIds.filter((entry) => entry !== requestId)
+    : [...collapsedRequestIds, requestId];
+}
+
+export function expandPendingUserInputCollapsedRequestId(
+  collapsedRequestIds: string[],
+  requestId: string,
+): string[] {
+  return collapsedRequestIds.includes(requestId)
+    ? collapsedRequestIds.filter((entry) => entry !== requestId)
+    : collapsedRequestIds;
+}
+
 export function derivePendingUserInputProgress(
   questions: ReadonlyArray<UserInputQuestion>,
   draftAnswers: Record<string, PendingUserInputDraftAnswer>,

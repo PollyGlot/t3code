@@ -97,6 +97,8 @@ import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timeline
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
+  expandPendingUserInputCollapsedRequestId,
+  togglePendingUserInputCollapsedRequestId,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
@@ -1361,6 +1363,9 @@ function ChatViewContent(props: ChatViewProps) {
   >({});
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
     useState<Record<string, number>>({});
+  const [collapsedPendingUserInputRequestIds, setCollapsedPendingUserInputRequestIds] = useState<
+    string[]
+  >([]);
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [pullRequestDialogState, setPullRequestDialogState] =
@@ -2251,6 +2256,9 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const activePendingIsResponding = activePendingUserInput
     ? respondingUserInputRequestIds.includes(activePendingUserInput.requestId)
+    : false;
+  const activePendingIsCollapsed = activePendingUserInput
+    ? collapsedPendingUserInputRequestIds.includes(activePendingUserInput.requestId)
     : false;
   const activeProposedPlan = useMemo(() => {
     if (!latestTurnSettled) {
@@ -5410,9 +5418,21 @@ function ChatViewContent(props: ChatViewProps) {
         ...existing,
         [activePendingUserInput.requestId]: nextQuestionIndex,
       }));
+      setCollapsedPendingUserInputRequestIds((existing) =>
+        expandPendingUserInputCollapsedRequestId(existing, activePendingUserInput.requestId),
+      );
     },
     [activePendingUserInput],
   );
+
+  const onToggleActivePendingUserInputCollapsed = useCallback(() => {
+    if (!activePendingUserInput) {
+      return;
+    }
+    setCollapsedPendingUserInputRequestIds((existing) =>
+      togglePendingUserInputCollapsedRequestId(existing, activePendingUserInput.requestId),
+    );
+  }, [activePendingUserInput]);
 
   const onSelectActivePendingUserInputOption = useCallback(
     (questionId: string, optionLabel: string) => {
@@ -6371,6 +6391,7 @@ function ChatViewContent(props: ChatViewProps) {
                             activePendingIsResponding={activePendingIsResponding}
                             activePendingDraftAnswers={activePendingDraftAnswers}
                             activePendingQuestionIndex={activePendingQuestionIndex}
+                            activePendingIsCollapsed={activePendingIsCollapsed}
                             respondingRequestIds={respondingRequestIds}
                             showPlanFollowUpPrompt={showPlanFollowUpPrompt}
                             activeProposedPlan={activeProposedPlan}
@@ -6398,6 +6419,9 @@ function ChatViewContent(props: ChatViewProps) {
                             onRespondToApproval={onRespondToApproval}
                             onSelectActivePendingUserInputOption={
                               onSelectActivePendingUserInputOption
+                            }
+                            onToggleActivePendingUserInputCollapsed={
+                              onToggleActivePendingUserInputCollapsed
                             }
                             onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
                             onPreviousActivePendingUserInputQuestion={

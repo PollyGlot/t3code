@@ -4,7 +4,10 @@ import {
   buildPendingUserInputAnswers,
   countAnsweredPendingUserInputQuestions,
   derivePendingUserInputProgress,
+  derivePendingUserInputSelectionEcho,
+  expandPendingUserInputCollapsedRequestId,
   findFirstUnansweredPendingUserInputQuestionIndex,
+  togglePendingUserInputCollapsedRequestId,
   resolvePendingUserInputAnswer,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
@@ -246,5 +249,76 @@ describe("pending user input question progress", () => {
       canAdvance: true,
       isComplete: true,
     });
+  });
+});
+
+describe("derivePendingUserInputSelectionEcho", () => {
+  it("returns null when nothing is selected", () => {
+    expect(derivePendingUserInputSelectionEcho(singleSelectQuestion, undefined)).toBeNull();
+    expect(
+      derivePendingUserInputSelectionEcho(singleSelectQuestion, { selectedOptionLabels: [] }),
+    ).toBeNull();
+  });
+
+  it("echoes the selected option label for single-select questions", () => {
+    expect(
+      derivePendingUserInputSelectionEcho(singleSelectQuestion, {
+        selectedOptionLabels: ["Orchestration-first"],
+      }),
+    ).toBe("Orchestration-first");
+  });
+
+  it("echoes the single selected label for multi-select questions", () => {
+    expect(
+      derivePendingUserInputSelectionEcho(multiSelectQuestion, {
+        selectedOptionLabels: ["Server"],
+      }),
+    ).toBe("Server");
+  });
+
+  it("summarizes multiple selections", () => {
+    expect(
+      derivePendingUserInputSelectionEcho(multiSelectQuestion, {
+        selectedOptionLabels: ["Server", "Web"],
+      }),
+    ).toBe("2 selected");
+  });
+
+  it("prefers the custom answer over selected options", () => {
+    expect(
+      derivePendingUserInputSelectionEcho(singleSelectQuestion, {
+        selectedOptionLabels: ["Orchestration-first"],
+        customAnswer: "Something else",
+      }),
+    ).toBe("Something else");
+  });
+});
+
+describe("pending user input collapse state", () => {
+  it("collapses and expands a request id", () => {
+    const collapsed = togglePendingUserInputCollapsedRequestId([], "req-1");
+    expect(collapsed).toEqual(["req-1"]);
+    expect(togglePendingUserInputCollapsedRequestId(collapsed, "req-1")).toEqual([]);
+  });
+
+  it("keeps other requests collapsed when toggling one", () => {
+    expect(togglePendingUserInputCollapsedRequestId(["req-1"], "req-2")).toEqual([
+      "req-1",
+      "req-2",
+    ]);
+    expect(togglePendingUserInputCollapsedRequestId(["req-1", "req-2"], "req-1")).toEqual([
+      "req-2",
+    ]);
+  });
+
+  it("expands a request id when the question changes", () => {
+    expect(expandPendingUserInputCollapsedRequestId(["req-1", "req-2"], "req-1")).toEqual([
+      "req-2",
+    ]);
+  });
+
+  it("keeps the same reference when the request is already expanded", () => {
+    const collapsed = ["req-2"];
+    expect(expandPendingUserInputCollapsedRequestId(collapsed, "req-1")).toBe(collapsed);
   });
 });

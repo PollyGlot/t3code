@@ -532,6 +532,7 @@ export interface ChatComposerProps {
   activePendingIsResponding: boolean;
   activePendingDraftAnswers: Record<string, PendingUserInputDraftAnswer>;
   activePendingQuestionIndex: number;
+  activePendingIsCollapsed: boolean;
   respondingRequestIds: ApprovalRequestId[];
 
   // Plan
@@ -574,6 +575,7 @@ export interface ChatComposerProps {
     decision: ProviderApprovalDecision,
   ) => Promise<unknown>;
   onSelectActivePendingUserInputOption: (questionId: string, optionLabel: string) => void;
+  onToggleActivePendingUserInputCollapsed: () => void;
   onAdvanceActivePendingUserInput: () => void;
   onPreviousActivePendingUserInputQuestion: () => void;
   onChangeActivePendingUserInputCustomAnswer: (
@@ -628,6 +630,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activePendingIsResponding,
     activePendingDraftAnswers,
     activePendingQuestionIndex,
+    activePendingIsCollapsed,
     respondingRequestIds,
     showPlanFollowUpPrompt,
     activeProposedPlan,
@@ -653,6 +656,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onImplementPlanInNewThread,
     onRespondToApproval,
     onSelectActivePendingUserInputOption,
+    onToggleActivePendingUserInputCollapsed,
     onAdvanceActivePendingUserInput,
     onPreviousActivePendingUserInputQuestion,
     onChangeActivePendingUserInputCustomAnswer,
@@ -2712,6 +2716,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   respondingRequestIds={respondingRequestIds}
                   answers={activePendingDraftAnswers}
                   questionIndex={activePendingQuestionIndex}
+                  collapsed={activePendingIsCollapsed}
+                  onToggleCollapsed={onToggleActivePendingUserInputCollapsed}
                   onToggleOption={onSelectActivePendingUserInputOption}
                   onAdvance={onAdvanceActivePendingUserInput}
                 />
@@ -2752,6 +2758,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 respondingRequestIds={respondingRequestIds}
                 answers={activePendingDraftAnswers}
                 questionIndex={activePendingQuestionIndex}
+                collapsed={activePendingIsCollapsed}
+                onToggleCollapsed={onToggleActivePendingUserInputCollapsed}
                 onToggleOption={onSelectActivePendingUserInputOption}
                 onAdvance={onAdvanceActivePendingUserInput}
               />
