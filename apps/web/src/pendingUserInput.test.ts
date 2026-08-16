@@ -5,9 +5,7 @@ import {
   countAnsweredPendingUserInputQuestions,
   derivePendingUserInputProgress,
   derivePendingUserInputSelectionEcho,
-  expandPendingUserInputCollapsedRequestId,
   findFirstUnansweredPendingUserInputQuestionIndex,
-  togglePendingUserInputCollapsedRequestId,
   resolvePendingUserInputAnswer,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
@@ -291,34 +289,5 @@ describe("derivePendingUserInputSelectionEcho", () => {
         customAnswer: "Something else",
       }),
     ).toBe("Something else");
-  });
-});
-
-describe("pending user input collapse state", () => {
-  it("collapses and expands a request id", () => {
-    const collapsed = togglePendingUserInputCollapsedRequestId([], "req-1");
-    expect(collapsed).toEqual(["req-1"]);
-    expect(togglePendingUserInputCollapsedRequestId(collapsed, "req-1")).toEqual([]);
-  });
-
-  it("keeps other requests collapsed when toggling one", () => {
-    expect(togglePendingUserInputCollapsedRequestId(["req-1"], "req-2")).toEqual([
-      "req-1",
-      "req-2",
-    ]);
-    expect(togglePendingUserInputCollapsedRequestId(["req-1", "req-2"], "req-1")).toEqual([
-      "req-2",
-    ]);
-  });
-
-  it("expands a request id when the question changes", () => {
-    expect(expandPendingUserInputCollapsedRequestId(["req-1", "req-2"], "req-1")).toEqual([
-      "req-2",
-    ]);
-  });
-
-  it("keeps the same reference when the request is already expanded", () => {
-    const collapsed = ["req-2"];
-    expect(expandPendingUserInputCollapsedRequestId(collapsed, "req-1")).toBe(collapsed);
   });
 });

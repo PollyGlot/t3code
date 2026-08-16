@@ -160,24 +160,6 @@ export function derivePendingUserInputSelectionEcho(
   return resolvedAnswer;
 }
 
-export function togglePendingUserInputCollapsedRequestId(
-  collapsedRequestIds: ReadonlyArray<string>,
-  requestId: string,
-): string[] {
-  return collapsedRequestIds.includes(requestId)
-    ? collapsedRequestIds.filter((entry) => entry !== requestId)
-    : [...collapsedRequestIds, requestId];
-}
-
-export function expandPendingUserInputCollapsedRequestId(
-  collapsedRequestIds: string[],
-  requestId: string,
-): string[] {
-  return collapsedRequestIds.includes(requestId)
-    ? collapsedRequestIds.filter((entry) => entry !== requestId)
-    : collapsedRequestIds;
-}
-
 export function derivePendingUserInputProgress(
   questions: ReadonlyArray<UserInputQuestion>,
   draftAnswers: Record<string, PendingUserInputDraftAnswer>,
